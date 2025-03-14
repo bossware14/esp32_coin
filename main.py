@@ -113,10 +113,11 @@ except Exception as e:
     
 led = machine.Pin(2, machine.Pin.OUT)
 led.value(1)
-
+pwm = machine.Pin(4, machine.Pin.OUT)
+pwm.value(0)
 def putdata(coin):
     headers = {'content-type':'application/json'}
-    data = {"time":time.time(),"coin":coin,"online":"1","wifi":wm.get_address(),"server":ip_address,"localtime":time.localtime()}
+    data = {"time":time.time(),"coin":coin,"online":"1","sending":0,"wifi":wm.get_address(),"server":ip_address,"localtime":time.localtime()}
     url = config['url']+str(serial_no)+'.json'
     try:
         response = urequests.put(url,json=data,headers=headers)
@@ -127,7 +128,7 @@ def putdata(coin):
 def updateOnline():
     url = config['url']+str(serial_no)+'.json'
     headers = {'content-type':'application/json'}
-    data = {"time":time.time(),"coin":coin.total,"online":"1","wifi":wm.get_address(),"server":ip_address,"localtime":time.localtime()}
+    data = {"time":time.time(),"coin":coin.total,"sending":0,"online":"1","wifi":wm.get_address(),"server":ip_address,"localtime":time.localtime()}
     response = urequests.put(url,json=data,headers=headers)
     response.close()
 
@@ -136,18 +137,44 @@ def updateOffline():
     data = "0"
     url = config['url']+str(serial_no)+'/online.json'
     response = urequests.put(url,json=data,headers=headers)
-    print(response.json())
-
+    print("OFFLINE")
 def round_to_nearst_10(x):
     if x % 10 == 0 :
         return x
     else :
         return math.ceil(x/10)*10
+    
+#pws = machine.PWM(machine.Pin(4),machine.Pin.OUT)
+
+def sendPWM():
+    global sss
+    headers = {'content-type':'application/json'}
+    url = config['url']+str(serial_no)+'/sending.json'
+    response = urequests.get(url,headers=headers)
+    res = int(response.json())
+    response.close()
+    sss = int(res)
+    if res > 0 :
+        for value in range(0,res) :
+            pwm.value(1)
+            time.sleep(0.03)
+            pwm.value(0)
+            time.sleep(0.03)
+        data = "0"
+        response = urequests.put(url,json=data,headers=headers)
+        response.close()
+        coin.total=res
+        coin.bill_last_state = 0
+        coin.checkandstart = 1
+        coin.last_pulse_state = 1
+        sss = 0
+        print("OK")
 
 curren  =  0
 oldtotal  =  0
 data = {"serial":serial_no,"coin":coin.total,"time":time.time()}
 coin.checkandstart = 0
+sss = 0
 try :
   updateOnline()
   while True:
@@ -162,13 +189,12 @@ try :
             print("total:",coin.total,coin.bill_pulse_count)
             putdata(coin.total)
             coin.checkandstart = 0
-            
         if oldtotal != coin.total and coin.bill_last_state == 0  and coin.last_pulse_state == 1 and coin.checkandstart == 0:
             print("And Check")
             coin.checkandstart = 1
+        if sss == 0 :
+            sendPWM()
         time.sleep(0.1)
-        
-except:
-    updateOffline()
 finally:
     updateOffline()
+
